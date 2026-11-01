@@ -7,7 +7,7 @@ A gate-choosing racing game. Pick the right gate in each sub-stage to manage you
 | Name | Student ID | GitHub |
 |------|-----------|--------|
 | Pusit Pattamasarawut | 6934453923 | [@Pusit-P](https://github.com/Pusit-P) |
-| _<Member B>_ | _<ID>_ | _<@username>_ |
+| Panupong Soparat | 6934449423 | [@KhaowPadKaPrao](https://github.com/KhaowPadKaPrao) |
 | Nature Tavesat | 6934437923 | [@naturetavesat](https://github.com/naturetavesat) |
 
 ## Game Rules
