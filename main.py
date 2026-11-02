@@ -28,80 +28,122 @@ def make_stages():
     return [[random_gate(), random_gate()] for _ in range(count)]
 
 
-def main():
-    pygame.init()
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("19 รถเลือกเลข")
-    clock = pygame.time.Clock()
-    font = pygame.font.SysFont(None, 40)
-    big_font = pygame.font.SysFont(None, 72)
-
+def reset_game():
     car = Car(random.randint(10, 30))
     stages = make_stages()
     passed = [False] * len(stages)
     ramp = Ramp(random.randint(30, 100))
     ramp_world_y = (len(stages) + 1) * STAGE_GAP
     distance = 0
-    result = None  # None, "WIN" or "LOSE"
+    result = None
+    return car, stages, passed, ramp, ramp_world_y, distance, result
+
+
+def draw_menu(screen, title_font, font, start_btn, exit_btn):
+    screen.fill((20, 20, 30))
+
+    title = title_font.render("The Car Game", True, (255, 255, 255))
+    screen.blit(title, title.get_rect(center=(WIDTH // 2, HEIGHT // 3)))
+
+    pygame.draw.rect(screen, (60, 170, 90), start_btn)
+    pygame.draw.rect(screen, (180, 70, 70), exit_btn)
+
+    start_text = font.render("Start", True, (255, 255, 255))
+    screen.blit(start_text, start_text.get_rect(center=start_btn.center))
+
+    exit_text = font.render("Exit", True, (255, 255, 255))
+    screen.blit(exit_text, exit_text.get_rect(center=exit_btn.center))
+
+
+def main():
+    pygame.init()
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("The Car Game")
+    clock = pygame.time.Clock()
+    font = pygame.font.SysFont(None, 40)
+    big_font = pygame.font.SysFont(None, 72)
+    title_font = pygame.font.SysFont(None, 72)
+
+    start_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 - 20, 240, 60)
+    exit_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 + 70, 240, 60)
+
+    current_state = "menu"
+    car, stages, passed, ramp, ramp_world_y, distance, result = reset_game()
 
     running = True
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            if event.type == pygame.KEYDOWN:
-                if event.key in (pygame.K_a, pygame.K_LEFT):
-                    car.move_to_lane(0)
-                if event.key in (pygame.K_d, pygame.K_RIGHT):
-                    car.move_to_lane(1)
-            if event.type == pygame.MOUSEMOTION:
-                car.move_to_lane(0 if event.pos[0] < WIDTH // 2 else 1)
+    try:
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                    return
 
-        if result is None:
-            distance += SCROLL_SPEED
+                if current_state == "menu":
+                    if event.type == pygame.MOUSEBUTTONDOWN:
+                        if start_btn.collidepoint(event.pos):
+                            current_state = "game"
+                            car, stages, passed, ramp, ramp_world_y, distance, result = reset_game()
+                        elif exit_btn.collidepoint(event.pos):
+                            running = False
+                            return
+                    continue
 
-            # Gate check: when a stage reaches the car, apply the gate in its lane
-            for i, pair in enumerate(stages):
-                if not passed[i] and distance >= (i + 1) * STAGE_GAP:
-                    car.pass_gate(pair[car.lane])
-                    passed[i] = True
+                if event.type == pygame.KEYDOWN:
+                    if event.key in (pygame.K_a, pygame.K_LEFT):
+                        car.move_to_lane(0)
+                    if event.key in (pygame.K_d, pygame.K_RIGHT):
+                        car.move_to_lane(1)
+                if event.type == pygame.MOUSEMOTION:
+                    car.move_to_lane(0 if event.pos[0] < WIDTH // 2 else 1)
 
-            # Ramp check at the end
-            if distance >= ramp_world_y:
-                result = "WIN" if ramp.can_pass(car.speed) else "LOSE"
+            if current_state == "game":
+                if result is None:
+                    distance += SCROLL_SPEED
 
-        # ---- Drawing ----
-        screen.fill((60, 60, 60))
-        pygame.draw.line(screen, (200, 200, 200), (WIDTH // 2, 0), (WIDTH // 2, HEIGHT), 3)
+                    # Gate check: when a stage reaches the car, apply the gate in its lane
+                    for i, pair in enumerate(stages):
+                        if not passed[i] and distance >= (i + 1) * STAGE_GAP:
+                            car.pass_gate(pair[car.lane])
+                            passed[i] = True
 
-        for i, pair in enumerate(stages):
-            y = CAR_Y - ((i + 1) * STAGE_GAP - distance)
-            if 0 <= y <= HEIGHT:
-                for lane in range(2):
-                    rect = pygame.Rect(LANE_X[lane] - 90, y - 25, 180, 50)
-                    color = (60, 160, 60) if pair[lane].op in "+x" else (180, 60, 60)
-                    pygame.draw.rect(screen, color, rect)
-                    text = font.render(pair[lane].label(), True, (255, 255, 255))
-                    screen.blit(text, text.get_rect(center=rect.center))
+                    # Ramp check at the end
+                    if distance >= ramp_world_y:
+                        result = "WIN" if ramp.can_pass(car.speed) else "LOSE"
 
-        ramp_y = CAR_Y - (ramp_world_y - distance)
-        if 0 <= ramp_y <= HEIGHT:
-            pygame.draw.rect(screen, (230, 200, 40), (0, ramp_y - 30, WIDTH, 60))
-            text = font.render(f"Need {ramp.required}", True, (0, 0, 0))
-            screen.blit(text, text.get_rect(center=(WIDTH // 2, ramp_y)))
+                # ---- Drawing ----
+                screen.fill((60, 60, 60))
+                pygame.draw.line(screen, (200, 200, 200), (WIDTH // 2, 0), (WIDTH // 2, HEIGHT), 3)
 
-        pygame.draw.rect(screen, (60, 120, 220), (LANE_X[car.lane] - 25, CAR_Y - 40, 50, 80))
-        speed_text = font.render(f"Speed: {car.speed}", True, (255, 255, 255))
-        screen.blit(speed_text, (10, 10))
+                for i, pair in enumerate(stages):
+                    y = CAR_Y - ((i + 1) * STAGE_GAP - distance)
+                    if 0 <= y <= HEIGHT:
+                        for lane in range(2):
+                            rect = pygame.Rect(LANE_X[lane] - 90, y - 25, 180, 50)
+                            color = (60, 160, 60) if pair[lane].op in "+x" else (180, 60, 60)
+                            pygame.draw.rect(screen, color, rect)
+                            text = font.render(pair[lane].label(), True, (255, 255, 255))
+                            screen.blit(text, text.get_rect(center=rect.center))
 
-        if result:
-            msg = big_font.render(f"YOU {result}", True, (255, 255, 255))
-            screen.blit(msg, msg.get_rect(center=(WIDTH // 2, HEIGHT // 2)))
+                ramp_y = CAR_Y - (ramp_world_y - distance)
+                if 0 <= ramp_y <= HEIGHT:
+                    pygame.draw.rect(screen, (230, 200, 40), (0, ramp_y - 30, WIDTH, 60))
+                    text = font.render(f"Need {ramp.required}", True, (0, 0, 0))
+                    screen.blit(text, text.get_rect(center=(WIDTH // 2, ramp_y)))
 
-        pygame.display.flip()
-        clock.tick(60)
+                pygame.draw.rect(screen, (60, 120, 220), (LANE_X[car.lane] - 25, CAR_Y - 40, 50, 80))
+                speed_text = font.render(f"Speed: {car.speed}", True, (255, 255, 255))
+                screen.blit(speed_text, (10, 10))
 
-    pygame.quit()
+                if result:
+                    msg = big_font.render(f"YOU {result}", True, (255, 255, 255))
+                    screen.blit(msg, msg.get_rect(center=(WIDTH // 2, HEIGHT // 2)))
+            else:
+                draw_menu(screen, title_font, font, start_btn, exit_btn)
+
+            pygame.display.flip()
+            clock.tick(60)
+    finally:
+        pygame.quit()
 
 
 if __name__ == "__main__":
