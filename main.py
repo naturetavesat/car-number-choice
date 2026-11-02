@@ -66,6 +66,7 @@ def main():
 
     start_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 - 20, 240, 60)
     exit_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 + 70, 240, 60)
+    continue_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 + 60, 240, 60)
 
     current_state = "menu"
     car, stages, passed, ramp, ramp_world_y, distance, result = reset_game()
@@ -86,6 +87,14 @@ def main():
                         elif exit_btn.collidepoint(event.pos):
                             running = False
                             return
+                    continue
+
+                if (
+                    result is not None
+                    and event.type == pygame.MOUSEBUTTONDOWN
+                    and continue_btn.collidepoint(event.pos)
+                ):
+                    current_state = "menu"
                     continue
 
                 if event.type == pygame.KEYDOWN:
@@ -110,7 +119,8 @@ def main():
                     if distance >= ramp_world_y:
                         result = "WIN" if ramp.can_pass(car.speed) else "LOSE"
 
-                # ---- Drawing ----
+            # ---- Drawing ----
+            if current_state == "game":
                 screen.fill((60, 60, 60))
                 pygame.draw.line(screen, (200, 200, 200), (WIDTH // 2, 0), (WIDTH // 2, HEIGHT), 3)
 
@@ -137,6 +147,9 @@ def main():
                 if result:
                     msg = big_font.render(f"YOU {result}", True, (255, 255, 255))
                     screen.blit(msg, msg.get_rect(center=(WIDTH // 2, HEIGHT // 2)))
+                    pygame.draw.rect(screen, (60, 170, 90), continue_btn)
+                    continue_text = font.render("Continue", True, (255, 255, 255))
+                    screen.blit(continue_text, continue_text.get_rect(center=continue_btn.center))
             else:
                 draw_menu(screen, title_font, font, start_btn, exit_btn)
 
