@@ -28,12 +28,18 @@ def make_stages():
     return [[random_gate(), random_gate()] for _ in range(count)]
 
 
+def highest_possible_gate_result(stages):
+    """Return the maximum possible speed value any gate could produce for this run."""
+    max_start_speed = 30
+    return max(gate.apply(max_start_speed) for pair in stages for gate in pair)
+
+
 def reset_game():
     car = Car(random.randint(10, 30))
     stages = make_stages()
     passed = [False] * len(stages)
-    highest_gate_value = max(gate.value for pair in stages for gate in pair)
-    ramp = Ramp(random.randint(0, max(0, highest_gate_value - 1)))
+    highest_result = highest_possible_gate_result(stages)
+    ramp = Ramp(random.randint(0, max(0, highest_result - 1)))
     ramp_world_y = (len(stages) + 1) * STAGE_GAP
     distance = 0
     result = None
