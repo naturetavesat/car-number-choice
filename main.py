@@ -43,7 +43,8 @@ def reset_game():
     ramp_world_y = (len(stages) + 1) * STAGE_GAP
     distance = 0
     result = None
-    return car, stages, passed, ramp, ramp_world_y, distance, result
+    start_ticks = pygame.time.get_ticks()  # บันทึกเวลาเริ่มเล่นเกม
+    return car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks
 
 
 def draw_menu(screen, title_font, font, start_btn, exit_btn):
@@ -71,12 +72,27 @@ def main():
     big_font = pygame.font.SysFont(None, 72)
     title_font = pygame.font.SysFont(None, 72)
 
+    # ==========================================
+    # 1. โหลดและจัดการรูปภาพจากโฟลเดอร์ Pic
+    # ==========================================
+
+    # โหลดรูปภาพรถ
+    car_img = pygame.image.load("Pic/car1.png").convert_alpha()
+    car_img = pygame.transform.scale(car_img, (108, 165))
+
+    # โหลดรูปภาพสัญญาณไฟ
+    red_light = pygame.image.load("Pic/RedLight.png").convert_alpha()
+    yellow_light = pygame.image.load("Pic/YellowLight.png").convert_alpha()
+    green_light = pygame.image.load("Pic/GreenLight.png").convert_alpha()
+
     start_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 - 20, 240, 60)
     exit_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 + 70, 240, 60)
     continue_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 + 60, 240, 60)
 
     current_state = "menu"
-    car, stages, passed, ramp, ramp_world_y, distance, result = reset_game()
+    car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks = reset_game()
+
+    PREPARE_TIME = 2.0  # เวลาเตรียมตัวก่อนปล่อยรถ
 
     running = True
     try:
@@ -86,37 +102,48 @@ def main():
                     running = False
                     return
 
+                # --- จัดการ Event ในหน้า Menu ---
                 if current_state == "menu":
                     if event.type == pygame.MOUSEBUTTONDOWN:
                         if start_btn.collidepoint(event.pos):
                             current_state = "game"
-                            car, stages, passed, ramp, ramp_world_y, distance, result = reset_game()
+                            car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks = reset_game()
                         elif exit_btn.collidepoint(event.pos):
                             running = False
                             return
                     continue
 
-                if (
-                    result is not None
-                    and event.type == pygame.MOUSEBUTTONDOWN
-                    and continue_btn.collidepoint(event.pos)
-                ):
-                    current_state = "menu"
-                    continue
+                # --- จัดการ Event ในหน้า Game ---
+                if current_state == "game":
+                    # หากเกมจบแล้ว สามารถกด Continue หรือกด 'R' เพื่อเริ่มใหม่/กลับหน้าเมนูได้
+                    if result is not None:
+                        if event.type == pygame.MOUSEBUTTONDOWN and continue_btn.collidepoint(event.pos):
+                            current_state = "menu"
+                            continue
+                        if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+                            car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks = reset_game()
+                            continue
 
-                if event.type == pygame.KEYDOWN:
-                    if event.key in (pygame.K_a, pygame.K_LEFT):
-                        car.move_to_lane(0)
-                    if event.key in (pygame.K_d, pygame.K_RIGHT):
-                        car.move_to_lane(1)
-                if event.type == pygame.MOUSEMOTION:
-                    car.move_to_lane(0 if event.pos[0] < WIDTH // 2 else 1)
+                    # ควบคุมทิศทางรถ
+                    if event.type == pygame.KEYDOWN:
+                        if event.key in (pygame.K_a, pygame.K_LEFT):
+                            car.move_to_lane(0)
+                        if event.key in (pygame.K_d, pygame.K_RIGHT):
+                            car.move_to_lane(1)
+                    if event.type == pygame.MOUSEMOTION:
+                        car.move_to_lane(0 if event.pos[0] < WIDTH // 2 else 1)
 
+            # ==========================================
+            # 2. คำนวณลอจิกการเล่นเกม (Game Logic)
+            # ==========================================
             if current_state == "game":
-                if result is None:
+                passed_sec = (pygame.time.get_ticks() - start_ticks) / 1000.0
+
+                # เริ่มเคลื่อนที่เฉพาะตอนหมดเวลาเตรียมตัวแล้ว
+                if result is None and passed_sec >= PREPARE_TIME:
                     distance += SCROLL_SPEED
 
-                    # Gate check: when a stage reaches the car, apply the gate in its lane
+                    # Gate check
                     for i, pair in enumerate(stages):
                         if not passed[i] and distance >= (i + 1) * STAGE_GAP:
                             car.pass_gate(pair[car.lane])
@@ -126,11 +153,14 @@ def main():
                     if distance >= ramp_world_y:
                         result = "WIN" if ramp.can_pass(car.speed) else "LOSE"
 
-            # ---- Drawing ----
+            # ==========================================
+            # 3. ส่วนวาดผลบนหน้าจอ (Drawing)
+            # ==========================================
             if current_state == "game":
                 screen.fill((60, 60, 60))
                 pygame.draw.line(screen, (200, 200, 200), (WIDTH // 2, 0), (WIDTH // 2, HEIGHT), 3)
 
+                # วาด Gate
                 for i, pair in enumerate(stages):
                     y = CAR_Y - ((i + 1) * STAGE_GAP - distance)
                     if 0 <= y <= HEIGHT:
@@ -141,23 +171,50 @@ def main():
                             text = font.render(pair[lane].label(), True, (255, 255, 255))
                             screen.blit(text, text.get_rect(center=rect.center))
 
+                # วาด Ramp
                 ramp_y = CAR_Y - (ramp_world_y - distance)
                 if 0 <= ramp_y <= HEIGHT:
                     pygame.draw.rect(screen, (230, 200, 40), (0, ramp_y - 30, WIDTH, 60))
                     text = font.render(f"Need {ramp.required}", True, (0, 0, 0))
                     screen.blit(text, text.get_rect(center=(WIDTH // 2, ramp_y)))
 
-                pygame.draw.rect(screen, (60, 120, 220), (LANE_X[car.lane] - 25, CAR_Y - 40, 50, 80))
+                # วาดรถยนต์ (ใช้ภาพ car.png)
+                car_x = LANE_X[car.lane] - 54  # กึ่งกลางภาพ (108 // 2 = 54)
+                car_y = CAR_Y - 82             # กึ่งกลางภาพ (165 // 2 = 82)
+                screen.blit(car_img, (car_x, car_y))
+
+                # แสดงค่า Speed บนมุมซ้ายบน
                 speed_text = font.render(f"Speed: {car.speed}", True, (255, 255, 255))
                 screen.blit(speed_text, (10, 10))
 
+                # วาดสัญญาณไฟนับถอยหลัง
+                if passed_sec < PREPARE_TIME:
+                    if passed_sec < 1.0:
+                        current_light = red_light
+                    else:
+                        current_light = yellow_light
+
+                    light_rect = current_light.get_rect(center=(WIDTH // 2, HEIGHT // 3))
+                    screen.blit(current_light, light_rect)
+                elif passed_sec < PREPARE_TIME + 0.25:
+                    light_rect = green_light.get_rect(center=(WIDTH // 2, HEIGHT // 3))
+                    screen.blit(green_light, light_rect)
+
+                # แสดงผลเมื่อจบรอบ
                 if result:
                     msg = big_font.render(f"YOU {result}", True, (255, 255, 255))
-                    screen.blit(msg, msg.get_rect(center=(WIDTH // 2, HEIGHT // 2)))
+                    screen.blit(msg, msg.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 30)))
+
+                    # ปุ่ม Continue สำหรับกลับไปหน้า Menu
                     pygame.draw.rect(screen, (60, 170, 90), continue_btn)
                     continue_text = font.render("Continue", True, (255, 255, 255))
                     screen.blit(continue_text, continue_text.get_rect(center=continue_btn.center))
+
+                    # ข้อความแนะนำการกด 'R' เพื่อ Restart ทันที
+                    restart_msg = font.render("Or Press 'R'", True, (200, 200, 200))
+                    screen.blit(restart_msg, restart_msg.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 150)))
             else:
+                # วาดหน้า Menu
                 draw_menu(screen, title_font, font, start_btn, exit_btn)
 
             pygame.display.flip()
