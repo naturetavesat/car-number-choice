@@ -32,7 +32,8 @@ def reset_game():
     car = Car(random.randint(10, 30))
     stages = make_stages()
     passed = [False] * len(stages)
-    ramp = Ramp(random.randint(30, 100))
+    highest_gate_value = max(gate.value for pair in stages for gate in pair)
+    ramp = Ramp(random.randint(0, max(0, highest_gate_value - 1)))
     ramp_world_y = (len(stages) + 1) * STAGE_GAP
     distance = 0
     result = None
