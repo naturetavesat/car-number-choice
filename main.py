@@ -6,10 +6,18 @@ from gate import Gate
 from ramp import Ramp
 
 WIDTH, HEIGHT = 480, 720
-LANE_X = [120, 360]          # left lane = A, right lane = B
 CAR_Y = 600
 STAGE_GAP = 300
 SCROLL_SPEED = 4
+HORIZON_Y = int(HEIGHT * 0.18)
+
+
+def lerp(start, end, amount):
+    return start + (end - start) * amount
+
+
+def clamp(value, lower, upper):
+    return max(lower, min(value, upper))
 
 
 def random_gate():
@@ -43,7 +51,7 @@ def reset_game():
     ramp_world_y = (len(stages) + 1) * STAGE_GAP
     distance = 0
     result = None
-    start_ticks = pygame.time.get_ticks()  # บันทึกเวลาเริ่มเล่นเกม
+    start_ticks = pygame.time.get_ticks()
     return car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks
 
 
@@ -53,14 +61,149 @@ def draw_menu(screen, title_font, font, start_btn, exit_btn):
     title = title_font.render("The Car Game", True, (255, 255, 255))
     screen.blit(title, title.get_rect(center=(WIDTH // 2, HEIGHT // 3)))
 
-    pygame.draw.rect(screen, (60, 170, 90), start_btn)
-    pygame.draw.rect(screen, (180, 70, 70), exit_btn)
+    pygame.draw.rect(screen, (60, 170, 90), start_btn, border_radius=8)
+    pygame.draw.rect(screen, (180, 70, 70), exit_btn, border_radius=8)
 
     start_text = font.render("Start", True, (255, 255, 255))
     screen.blit(start_text, start_text.get_rect(center=start_btn.center))
 
     exit_text = font.render("Exit", True, (255, 255, 255))
     screen.blit(exit_text, exit_text.get_rect(center=exit_btn.center))
+
+
+def draw_road(screen, distance):
+    """Draw a receding road with perspective lane markings and roadside stripes."""
+    road_top_half = 48
+    road_bottom_half = WIDTH * 0.46
+    road_points = [
+        (WIDTH // 2 - road_top_half, HORIZON_Y),
+        (WIDTH // 2 + road_top_half, HORIZON_Y),
+        (WIDTH // 2 + road_bottom_half, HEIGHT),
+        (WIDTH // 2 - road_bottom_half, HEIGHT),
+    ]
+
+    screen.fill((100, 160, 95))
+    pygame.draw.rect(screen, (110, 175, 105), (0, HORIZON_Y, WIDTH, HEIGHT - HORIZON_Y))
+    pygame.draw.polygon(screen, (45, 46, 52), road_points)
+    pygame.draw.polygon(screen, (210, 210, 210), road_points, 2)
+
+    # Short dashed center line segments shrink toward the horizon and scroll with the road.
+    stripe_cycle = 100
+    scroll = (distance * 3) % stripe_cycle
+    for index in range(-1, 10):
+        world_y = index * stripe_cycle + scroll
+        t = world_y / (HEIGHT - HORIZON_Y)
+        if not 0 <= t <= 1:
+            continue
+        y = int(lerp(HORIZON_Y, HEIGHT, t))
+        half_width = lerp(road_top_half, road_bottom_half, t)
+        dash_height = max(2, int(lerp(3, 24, t)))
+        dash_width = max(1, int(lerp(1, 5, t)))
+        pygame.draw.rect(
+            screen,
+            (230, 230, 220),
+            (WIDTH // 2 - dash_width // 2, y, dash_width, dash_height),
+        )
+
+        # Perspective cross-road markings add depth without adding gameplay obstacles.
+        if index % 2 == 0:
+            pygame.draw.line(
+                screen,
+                (75, 76, 82),
+                (WIDTH // 2 - half_width, y + dash_height),
+                (WIDTH // 2 + half_width, y + dash_height),
+                max(1, int(1 + t * 2)),
+            )
+
+    # Scrolling red/white edge markers reinforce the sense of forward motion.
+    for side in (-1, 1):
+        for index in range(-1, 9):
+            world_y = index * 90 + (distance * 3) % 90
+            t = world_y / (HEIGHT - HORIZON_Y)
+            if not 0 <= t <= 1:
+                continue
+            y = int(lerp(HORIZON_Y, HEIGHT, t))
+            half_width = lerp(road_top_half, road_bottom_half, t)
+            marker_width = max(2, int(lerp(2, 12, t)))
+            marker_height = max(2, int(lerp(3, 30, t)))
+            x = int(WIDTH // 2 + side * (half_width + marker_width))
+            color = (225, 225, 220) if index % 2 else (190, 65, 55)
+            pygame.draw.rect(
+                screen,
+                color,
+                (x - marker_width // 2, y, marker_width, marker_height),
+            )
+
+
+def perspective_for_y(y):
+    return clamp((y - HORIZON_Y) / (HEIGHT - HORIZON_Y), 0.0, 1.0)
+
+
+def draw_gate(screen, gate, lane, y, font):
+    if y < HORIZON_Y - 10 or y > HEIGHT + 60:
+        return
+
+    depth = perspective_for_y(y)
+    width = int(lerp(28, 166, depth))
+    height = int(lerp(12, 58, depth))
+    lane_center = WIDTH // 2 + (-1 if lane == 0 else 1) * int(lerp(18, 98, depth))
+    rect = pygame.Rect(lane_center - width // 2, int(y) - height // 2, width, height)
+    color = (50, 150, 65) if gate.op in "+x" else (180, 55, 55)
+
+    # Shadow, raised gate panel, and border give the 2D shapes a simple 3D look.
+    pygame.draw.rect(screen, (24, 25, 28), rect.move(0, max(2, int(5 * depth))), border_radius=5)
+    pygame.draw.rect(screen, color, rect, border_radius=5)
+    pygame.draw.rect(screen, (245, 245, 235), rect, max(1, int(1 + 2 * depth)), border_radius=5)
+
+    label_size = max(13, int(lerp(14, 34, depth)))
+    label_font = pygame.font.SysFont(None, label_size)
+    label = label_font.render(gate.label(), True, (255, 255, 255))
+    screen.blit(label, label.get_rect(center=rect.center))
+
+
+def draw_ramp(screen, ramp, y, font):
+    if y < HORIZON_Y - 10 or y > HEIGHT + 60:
+        return
+
+    depth = perspective_for_y(y)
+    half_width = int(lerp(35, WIDTH * 0.43, depth))
+    height = int(lerp(10, 46, depth))
+    points = [
+        (WIDTH // 2 - half_width, y + height // 2),
+        (WIDTH // 2 - half_width + int(12 * depth), y - height // 2),
+        (WIDTH // 2 + half_width - int(12 * depth), y - height // 2),
+        (WIDTH // 2 + half_width, y + height // 2),
+    ]
+    pygame.draw.polygon(screen, (45, 38, 20), [(x, yy + 5) for x, yy in points])
+    pygame.draw.polygon(screen, (230, 190, 45), points)
+    pygame.draw.polygon(screen, (255, 230, 110), points, max(1, int(1 + 2 * depth)))
+
+    label = font.render(f"Need {ramp.required}", True, (25, 25, 25))
+    screen.blit(label, label.get_rect(center=(WIDTH // 2, int(y))))
+
+
+def draw_car(screen, car, car_img):
+    lane_x = WIDTH // 2 + (-1 if car.lane == 0 else 1) * 58
+    car_y = int(HEIGHT * 0.82)
+
+    if car_img is not None:
+        # Preserve the supplied sprite while scaling it to sit naturally on the road.
+        image = pygame.transform.scale(car_img, (84, 128))
+        screen.blit(image, image.get_rect(midbottom=(lane_x, car_y + 35)))
+        return
+
+    # Fallback car sprite if the image asset is unavailable.
+    shadow = pygame.Rect(lane_x - 42, car_y + 22, 84, 13)
+    body = pygame.Rect(lane_x - 31, car_y - 29, 62, 58)
+    pygame.draw.ellipse(screen, (25, 25, 25), shadow)
+    pygame.draw.rect(screen, (45, 120, 225), body, border_radius=12)
+    pygame.draw.polygon(screen, (105, 185, 255), [
+        (lane_x - 21, car_y - 7), (lane_x - 14, car_y - 23),
+        (lane_x + 14, car_y - 23), (lane_x + 21, car_y - 7),
+    ])
+    pygame.draw.rect(screen, (230, 230, 240), (lane_x - 21, car_y + 5, 42, 12), border_radius=4)
+    pygame.draw.circle(screen, (30, 30, 30), (lane_x - 23, car_y + 23), 7)
+    pygame.draw.circle(screen, (30, 30, 30), (lane_x + 23, car_y + 23), 7)
 
 
 def main():
@@ -72,18 +215,16 @@ def main():
     big_font = pygame.font.SysFont(None, 72)
     title_font = pygame.font.SysFont(None, 72)
 
-    # ==========================================
-    # 1. โหลดและจัดการรูปภาพจากโฟลเดอร์ Pic
-    # ==========================================
+    def load_image(path):
+        try:
+            return pygame.image.load(path).convert_alpha()
+        except (pygame.error, FileNotFoundError):
+            return None
 
-    # โหลดรูปภาพรถ
-    car_img = pygame.image.load("Pic/car1.png").convert_alpha()
-    car_img = pygame.transform.scale(car_img, (108, 165))
-
-    # โหลดรูปภาพสัญญาณไฟ
-    red_light = pygame.image.load("Pic/RedLight.png").convert_alpha()
-    yellow_light = pygame.image.load("Pic/YellowLight.png").convert_alpha()
-    green_light = pygame.image.load("Pic/GreenLight.png").convert_alpha()
+    car_img = load_image("Pic/car1.png")
+    red_light = load_image("Pic/RedLight.png")
+    yellow_light = load_image("Pic/YellowLight.png")
+    green_light = load_image("Pic/GreenLight.png")
 
     start_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 - 20, 240, 60)
     exit_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 + 70, 240, 60)
@@ -91,8 +232,7 @@ def main():
 
     current_state = "menu"
     car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks = reset_game()
-
-    PREPARE_TIME = 2.0  # เวลาเตรียมตัวก่อนปล่อยรถ
+    prepare_time = 2.0
 
     running = True
     try:
@@ -100,9 +240,8 @@ def main():
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
-                    return
+                    continue
 
-                # --- จัดการ Event ในหน้า Menu ---
                 if current_state == "menu":
                     if event.type == pygame.MOUSEBUTTONDOWN:
                         if start_btn.collidepoint(event.pos):
@@ -110,12 +249,9 @@ def main():
                             car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks = reset_game()
                         elif exit_btn.collidepoint(event.pos):
                             running = False
-                            return
                     continue
 
-                # --- จัดการ Event ในหน้า Game ---
                 if current_state == "game":
-                    # หากเกมจบแล้ว สามารถกด Continue หรือกด 'R' เพื่อเริ่มใหม่/กลับหน้าเมนูได้
                     if result is not None:
                         if event.type == pygame.MOUSEBUTTONDOWN and continue_btn.collidepoint(event.pos):
                             current_state = "menu"
@@ -124,97 +260,69 @@ def main():
                             car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks = reset_game()
                             continue
 
-                    # ควบคุมทิศทางรถ
                     if event.type == pygame.KEYDOWN:
                         if event.key in (pygame.K_a, pygame.K_LEFT):
                             car.move_to_lane(0)
-                        if event.key in (pygame.K_d, pygame.K_RIGHT):
+                        elif event.key in (pygame.K_d, pygame.K_RIGHT):
                             car.move_to_lane(1)
-                    if event.type == pygame.MOUSEMOTION:
+                    elif event.type == pygame.MOUSEMOTION:
                         car.move_to_lane(0 if event.pos[0] < WIDTH // 2 else 1)
 
-            # ==========================================
-            # 2. คำนวณลอจิกการเล่นเกม (Game Logic)
-            # ==========================================
             if current_state == "game":
                 passed_sec = (pygame.time.get_ticks() - start_ticks) / 1000.0
 
-                # เริ่มเคลื่อนที่เฉพาะตอนหมดเวลาเตรียมตัวแล้ว
-                if result is None and passed_sec >= PREPARE_TIME:
+                if result is None and passed_sec >= prepare_time:
                     distance += SCROLL_SPEED
 
-                    # Gate check
-                    for i, pair in enumerate(stages):
-                        if not passed[i] and distance >= (i + 1) * STAGE_GAP:
+                    for index, pair in enumerate(stages):
+                        if not passed[index] and distance >= (index + 1) * STAGE_GAP:
                             car.pass_gate(pair[car.lane])
-                            passed[i] = True
+                            passed[index] = True
 
-                    # Ramp check at the end
                     if distance >= ramp_world_y:
                         result = "WIN" if ramp.can_pass(car.speed) else "LOSE"
 
-            # ==========================================
-            # 3. ส่วนวาดผลบนหน้าจอ (Drawing)
-            # ==========================================
-            if current_state == "game":
-                screen.fill((60, 60, 60))
-                pygame.draw.line(screen, (200, 200, 200), (WIDTH // 2, 0), (WIDTH // 2, HEIGHT), 3)
+                draw_road(screen, distance)
 
-                # วาด Gate
-                for i, pair in enumerate(stages):
-                    y = CAR_Y - ((i + 1) * STAGE_GAP - distance)
-                    if 0 <= y <= HEIGHT:
-                        for lane in range(2):
-                            rect = pygame.Rect(LANE_X[lane] - 90, y - 25, 180, 50)
-                            color = (60, 160, 60) if pair[lane].op in "+x" else (180, 60, 60)
-                            pygame.draw.rect(screen, color, rect)
-                            text = font.render(pair[lane].label(), True, (255, 255, 255))
-                            screen.blit(text, text.get_rect(center=rect.center))
+                for index, pair in enumerate(stages):
+                    gate_y = CAR_Y - ((index + 1) * STAGE_GAP - distance)
+                    for lane, gate in enumerate(pair):
+                        draw_gate(screen, gate, lane, gate_y, font)
 
-                # วาด Ramp
                 ramp_y = CAR_Y - (ramp_world_y - distance)
-                if 0 <= ramp_y <= HEIGHT:
-                    pygame.draw.rect(screen, (230, 200, 40), (0, ramp_y - 30, WIDTH, 60))
-                    text = font.render(f"Need {ramp.required}", True, (0, 0, 0))
-                    screen.blit(text, text.get_rect(center=(WIDTH // 2, ramp_y)))
+                draw_ramp(screen, ramp, ramp_y, font)
+                draw_car(screen, car, car_img)
 
-                # วาดรถยนต์ (ใช้ภาพ car.png)
-                car_x = LANE_X[car.lane] - 54  # กึ่งกลางภาพ (108 // 2 = 54)
-                car_y = CAR_Y - 82             # กึ่งกลางภาพ (165 // 2 = 82)
-                screen.blit(car_img, (car_x, car_y))
-
-                # แสดงค่า Speed บนมุมซ้ายบน
                 speed_text = font.render(f"Speed: {car.speed}", True, (255, 255, 255))
                 screen.blit(speed_text, (10, 10))
 
-                # วาดสัญญาณไฟนับถอยหลัง
-                if passed_sec < PREPARE_TIME:
-                    if passed_sec < 1.0:
-                        current_light = red_light
+                if passed_sec < prepare_time:
+                    light = red_light if passed_sec < 1.0 else yellow_light
+                    if light is not None:
+                        light = pygame.transform.smoothscale(light, (72, 110))
+                        screen.blit(light, light.get_rect(center=(WIDTH // 2, HEIGHT // 3)))
                     else:
-                        current_light = yellow_light
+                        color = (220, 45, 45) if passed_sec < 1.0 else (235, 190, 35)
+                        pygame.draw.circle(screen, color, (WIDTH // 2, HEIGHT // 3), 24)
+                elif passed_sec < prepare_time + 0.25:
+                    if green_light is not None:
+                        light = pygame.transform.smoothscale(green_light, (72, 110))
+                        screen.blit(light, light.get_rect(center=(WIDTH // 2, HEIGHT // 3)))
+                    else:
+                        pygame.draw.circle(screen, (40, 210, 80), (WIDTH // 2, HEIGHT // 3), 24)
 
-                    light_rect = current_light.get_rect(center=(WIDTH // 2, HEIGHT // 3))
-                    screen.blit(current_light, light_rect)
-                elif passed_sec < PREPARE_TIME + 0.25:
-                    light_rect = green_light.get_rect(center=(WIDTH // 2, HEIGHT // 3))
-                    screen.blit(green_light, light_rect)
-
-                # แสดงผลเมื่อจบรอบ
                 if result:
-                    msg = big_font.render(f"YOU {result}", True, (255, 255, 255))
-                    screen.blit(msg, msg.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 30)))
-
-                    # ปุ่ม Continue สำหรับกลับไปหน้า Menu
-                    pygame.draw.rect(screen, (60, 170, 90), continue_btn)
+                    overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+                    overlay.fill((0, 0, 0, 120))
+                    screen.blit(overlay, (0, 0))
+                    message = big_font.render(f"YOU {result}", True, (255, 255, 255))
+                    screen.blit(message, message.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 30)))
+                    pygame.draw.rect(screen, (60, 170, 90), continue_btn, border_radius=8)
                     continue_text = font.render("Continue", True, (255, 255, 255))
                     screen.blit(continue_text, continue_text.get_rect(center=continue_btn.center))
-
-                    # ข้อความแนะนำการกด 'R' เพื่อ Restart ทันที
-                    restart_msg = font.render("Or Press 'R'", True, (200, 200, 200))
-                    screen.blit(restart_msg, restart_msg.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 150)))
+                    restart_text = font.render("Or Press 'R'", True, (220, 220, 220))
+                    screen.blit(restart_text, restart_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 150)))
             else:
-                # วาดหน้า Menu
                 draw_menu(screen, title_font, font, start_btn, exit_btn)
 
             pygame.display.flip()
