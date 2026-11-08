@@ -13,9 +13,11 @@ A gate-choosing racing game. Pick the right gate in each sub-stage to manage you
 ## Game Rules
 
 - Start with a random speed. Speed acts as your health points.
-- Each run has 5 to 10 sub-stages, and each has 2 gates (A and B). Pick one.
+- Each run has 5 to 10 sub-stages. A stage has 2 or occasionally 3 gates.
+- Choose your lane before each gate. The road moves at a consistent speed.
 - Gates change speed: `+`, `-`, `x`, `/` (division rounds down).
-- At the end, a ramp requires a minimum speed. If your speed is lower, you lose.
+- Some stages contain deceptive multiplier/division combinations.
+- At the end, a ramp requires a minimum speed calculated from the whole route. If your speed is lower, you lose.
 
 ## Features
 

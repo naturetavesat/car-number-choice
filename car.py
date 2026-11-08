@@ -3,11 +3,27 @@ class Car:
 
     def __init__(self, speed):
         self.speed = speed
-        self.lane = 0  # 0 = left (gate A), 1 = right (gate B)
+        self.lane = 0  # 0 = left, 1 = middle/right, 2 = right
         self.lane_position = float(self.lane)
+        self.lane_count = 3
 
-    def move_to_lane(self, lane):
-        self.lane = lane
+    def move_to_lane(self, lane, lane_count=3):
+        if lane_count != self.lane_count:
+            self.set_lane_count(lane_count)
+        self.lane = max(0, min(lane, lane_count - 1))
+
+    def set_lane_count(self, lane_count):
+        if lane_count < 1:
+            raise ValueError("lane_count must be positive")
+
+        current_center = (self.lane_position + 0.5) / self.lane_count
+        target_center = (self.lane + 0.5) / self.lane_count
+        self.lane_count = lane_count
+        self.lane = max(
+            0,
+            min(round(target_center * lane_count - 0.5), lane_count - 1),
+        )
+        self.lane_position = current_center * lane_count - 0.5
 
     def update(self, delta_seconds):
         lane_change_speed = 2.5

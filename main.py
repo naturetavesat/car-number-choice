@@ -10,6 +10,8 @@ CAR_Y = 600
 STAGE_GAP = 300
 SCROLL_SPEED = 4
 HORIZON_Y = int(HEIGHT * 0.18)
+ROAD_TOP_HALF = 48
+ROAD_BOTTOM_HALF = WIDTH * 0.46
 
 
 def lerp(start, end, amount):
@@ -33,26 +35,65 @@ def random_gate():
 
 def make_stages():
     count = random.randint(5, 10)
-    return [[random_gate(), random_gate()] for _ in range(count)]
+    stages = [
+        [random_gate() for _ in range(3 if random.random() < 0.35 else 2)]
+        for _ in range(count)
+    ]
+
+    # A large multiplier followed by division creates a tempting but risky route.
+    if count > 1 and random.random() < 0.75:
+        trap_stage = random.randrange(count - 1)
+        stages[trap_stage][0] = Gate("x", 3)
+        stages[trap_stage + 1][0] = Gate("/", 3)
+        if len(stages[trap_stage]) == 2:
+            stages[trap_stage][1] = Gate("+", random.randint(8, 15))
+        if len(stages[trap_stage + 1]) == 2:
+            stages[trap_stage + 1][1] = Gate("+", random.randint(8, 15))
+    return stages
 
 
-def highest_possible_gate_result(stages):
-    """Return the maximum possible speed value any gate could produce for this run."""
-    max_start_speed = 30
-    return max(gate.apply(max_start_speed) for pair in stages for gate in pair)
+def possible_route_results(start_speed, stages):
+    """Return every final speed reachable by choosing one gate per stage."""
+    possible_speeds = {start_speed}
+    for pair in stages:
+        possible_speeds = {
+            gate.apply(speed)
+            for speed in possible_speeds
+            for gate in pair
+        }
+    return possible_speeds
+
+
+def highest_possible_route_result(start_speed, stages):
+    """Return the best final speed available when considering every stage."""
+    return max(possible_route_results(start_speed, stages))
 
 
 def reset_game():
     car = Car(random.randint(10, 30))
     stages = make_stages()
+    car.set_lane_count(len(stages[0]))
     passed = [False] * len(stages)
-    highest_result = highest_possible_gate_result(stages)
-    ramp = Ramp(random.randint(0, max(0, highest_result - 1)))
+    reachable_results = sorted(possible_route_results(car.speed, stages))
+    # Pick an attainable result, not a value between two possible routes.
+    # The lower-middle result keeps the ramp challenging without requiring
+    # the player to find the single mathematically best route.
+    target_index = max(0, (len(reachable_results) - 1) * 2 // 5)
+    ramp_requirement = reachable_results[target_index]
+    ramp = Ramp(ramp_requirement)
     ramp_world_y = (len(stages) + 1) * STAGE_GAP
     distance = 0
     result = None
     start_ticks = pygame.time.get_ticks()
     return car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks
+
+
+def active_lane_count(stages, passed):
+    next_stage = next(
+        (index for index, passed_stage in enumerate(passed) if not passed_stage),
+        len(stages) - 1,
+    )
+    return len(stages[next_stage])
 
 
 def draw_menu(screen, title_font, font, start_btn, exit_btn):
@@ -73,13 +114,11 @@ def draw_menu(screen, title_font, font, start_btn, exit_btn):
 
 def draw_road(screen, distance):
     """Draw a receding road with perspective lane markings and roadside stripes."""
-    road_top_half = 48
-    road_bottom_half = WIDTH * 0.46
     road_points = [
-        (WIDTH // 2 - road_top_half, HORIZON_Y),
-        (WIDTH // 2 + road_top_half, HORIZON_Y),
-        (WIDTH // 2 + road_bottom_half, HEIGHT),
-        (WIDTH // 2 - road_bottom_half, HEIGHT),
+        (WIDTH // 2 - ROAD_TOP_HALF, HORIZON_Y),
+        (WIDTH // 2 + ROAD_TOP_HALF, HORIZON_Y),
+        (WIDTH // 2 + ROAD_BOTTOM_HALF, HEIGHT),
+        (WIDTH // 2 - ROAD_BOTTOM_HALF, HEIGHT),
     ]
 
     screen.fill((100, 160, 95))
@@ -96,7 +135,7 @@ def draw_road(screen, distance):
         if not 0 <= t <= 1:
             continue
         y = int(lerp(HORIZON_Y, HEIGHT, t))
-        half_width = lerp(road_top_half, road_bottom_half, t)
+        half_width = road_half_width(t)
         dash_height = max(2, int(lerp(3, 24, t)))
         dash_width = max(1, int(lerp(1, 5, t)))
         pygame.draw.rect(
@@ -123,7 +162,7 @@ def draw_road(screen, distance):
             if not 0 <= t <= 1:
                 continue
             y = int(lerp(HORIZON_Y, HEIGHT, t))
-            half_width = lerp(road_top_half, road_bottom_half, t)
+            half_width = road_half_width(t)
             marker_width = max(2, int(lerp(2, 12, t)))
             marker_height = max(2, int(lerp(3, 30, t)))
             x = int(WIDTH // 2 + side * (half_width + marker_width))
@@ -139,14 +178,24 @@ def perspective_for_y(y):
     return clamp((y - HORIZON_Y) / (HEIGHT - HORIZON_Y), 0.0, 1.0)
 
 
-def draw_gate(screen, gate, lane, y, font):
+def road_half_width(depth):
+    return lerp(ROAD_TOP_HALF, ROAD_BOTTOM_HALF, depth)
+
+
+def lane_center_x(lane_position, lane_count, depth):
+    lane_width = (road_half_width(depth) * 2) / lane_count
+    return int(WIDTH // 2 - road_half_width(depth) + (lane_position + 0.5) * lane_width)
+
+
+def draw_gate(screen, gate, lane, lane_count, y, font):
     if y < HORIZON_Y - 10 or y > HEIGHT + 60:
         return
 
     depth = perspective_for_y(y)
-    width = int(lerp(28, 166, depth))
+    lane_width = (road_half_width(depth) * 2) / lane_count
+    width = max(12, int(lane_width * 0.78))
     height = int(lerp(12, 58, depth))
-    lane_center = WIDTH // 2 + (-1 if lane == 0 else 1) * int(lerp(18, 98, depth))
+    lane_center = lane_center_x(lane, lane_count, depth)
     rect = pygame.Rect(lane_center - width // 2, int(y) - height // 2, width, height)
     color = (50, 150, 65) if gate.op in "+x" else (180, 55, 55)
 
@@ -182,8 +231,13 @@ def draw_ramp(screen, ramp, y, font):
     screen.blit(label, label.get_rect(center=(WIDTH // 2, int(y))))
 
 
-def draw_car(screen, car, car_img):
-    lane_x = int(WIDTH // 2 + (car.lane_position * 2 - 1) * 58)
+def draw_car(screen, car, car_img, lane_count):
+    lane_position = min(car.lane_position, lane_count - 1)
+    lane_x = lane_center_x(
+        lane_position,
+        lane_count,
+        perspective_for_y(CAR_Y),
+    )
     car_y = int(HEIGHT * 0.82)
 
     if car_img is not None:
@@ -263,24 +317,37 @@ def main():
                             continue
 
                     if event.type == pygame.KEYDOWN:
+                        lane_count = active_lane_count(stages, passed)
                         if event.key in (pygame.K_a, pygame.K_LEFT):
-                            car.move_to_lane(0)
+                            car.move_to_lane(0, lane_count)
+                        elif event.key in (pygame.K_s, pygame.K_DOWN):
+                            car.move_to_lane(1, lane_count)
                         elif event.key in (pygame.K_d, pygame.K_RIGHT):
-                            car.move_to_lane(1)
+                            car.move_to_lane(lane_count - 1, lane_count)
                     elif event.type == pygame.MOUSEMOTION:
-                        car.move_to_lane(0 if event.pos[0] < WIDTH // 2 else 1)
+                        lane_count = active_lane_count(stages, passed)
+                        car_depth = perspective_for_y(HEIGHT * 0.82)
+                        closest_lane = min(
+                            range(lane_count),
+                            key=lambda lane: abs(
+                                event.pos[0] - lane_center_x(lane, lane_count, car_depth)
+                            ),
+                        )
+                        car.move_to_lane(closest_lane, lane_count)
 
             if current_state == "game":
                 car.update(delta_seconds)
                 passed_sec = (pygame.time.get_ticks() - start_ticks) / 1000.0
 
                 if result is None and passed_sec >= prepare_time:
-                    distance += SCROLL_SPEED
+                    distance += SCROLL_SPEED * delta_seconds * 60
 
                     for index, pair in enumerate(stages):
                         if not passed[index] and distance >= (index + 1) * STAGE_GAP:
-                            car.pass_gate(pair[car.lane])
+                            car.pass_gate(pair[min(car.lane, len(pair) - 1)])
                             passed[index] = True
+                            if index + 1 < len(stages):
+                                car.set_lane_count(len(stages[index + 1]))
 
                     if distance >= ramp_world_y:
                         result = "WIN" if ramp.can_pass(car.speed) else "LOSE"
@@ -290,14 +357,22 @@ def main():
                 for index, pair in enumerate(stages):
                     gate_y = CAR_Y - ((index + 1) * STAGE_GAP - distance)
                     for lane, gate in enumerate(pair):
-                        draw_gate(screen, gate, lane, gate_y, font)
+                        draw_gate(screen, gate, lane, len(pair), gate_y, font)
 
                 ramp_y = CAR_Y - (ramp_world_y - distance)
                 draw_ramp(screen, ramp, ramp_y, font)
-                draw_car(screen, car, car_img)
+                draw_car(screen, car, car_img, car.lane_count)
 
                 speed_text = font.render(f"Speed: {car.speed}", True, (255, 255, 255))
                 screen.blit(speed_text, (10, 10))
+                controls_font = pygame.font.SysFont(None, 24)
+                controls_text = controls_font.render(
+                    "A/Left   S/Down   D/Right", True, (225, 225, 225)
+                )
+                screen.blit(
+                    controls_text,
+                    controls_text.get_rect(midbottom=(WIDTH // 2, HEIGHT - 8)),
+                )
 
                 if passed_sec < prepare_time:
                     light = red_light if passed_sec < 1.0 else yellow_light
