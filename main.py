@@ -183,7 +183,7 @@ def draw_ramp(screen, ramp, y, font):
 
 
 def draw_car(screen, car, car_img):
-    lane_x = WIDTH // 2 + (-1 if car.lane == 0 else 1) * 58
+    lane_x = int(WIDTH // 2 + (car.lane_position * 2 - 1) * 58)
     car_y = int(HEIGHT * 0.82)
 
     if car_img is not None:
@@ -237,6 +237,8 @@ def main():
     running = True
     try:
         while running:
+            delta_seconds = clock.tick(60) / 1000.0
+
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
@@ -269,6 +271,7 @@ def main():
                         car.move_to_lane(0 if event.pos[0] < WIDTH // 2 else 1)
 
             if current_state == "game":
+                car.update(delta_seconds)
                 passed_sec = (pygame.time.get_ticks() - start_ticks) / 1000.0
 
                 if result is None and passed_sec >= prepare_time:
@@ -326,7 +329,6 @@ def main():
                 draw_menu(screen, title_font, font, start_btn, exit_btn)
 
             pygame.display.flip()
-            clock.tick(60)
     finally:
         pygame.quit()
 
