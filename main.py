@@ -3,6 +3,7 @@ import pygame
 
 from car import Car
 from gate import Gate
+from levels import LEVELS, LevelConfig
 from ramp import Ramp
 
 WIDTH, HEIGHT = 480, 720
@@ -22,8 +23,8 @@ def clamp(value, lower, upper):
     return max(lower, min(value, upper))
 
 
-def random_gate():
-    op = random.choice(["+", "-", "x", "/"])
+def random_gate(allowed_operations):
+    op = random.choice(allowed_operations)
     if op == "+":
         value = random.randint(5, 30)
     elif op == "-":
@@ -33,15 +34,21 @@ def random_gate():
     return Gate(op, value)
 
 
-def make_stages():
-    count = random.randint(5, 10)
+def make_stages(config):
+    if config.fixed_stages:
+        return [list(pair) for pair in config.fixed_stages]
+
+    count = config.stage_count
     stages = [
-        [random_gate() for _ in range(3 if random.random() < 0.35 else 2)]
+        [
+            random_gate(config.allowed_operations)
+            for _ in range(random.randint(config.min_gates, config.max_gates))
+        ]
         for _ in range(count)
     ]
 
     # A large multiplier followed by division creates a tempting but risky route.
-    if count > 1 and random.random() < 0.75:
+    if config.include_traps and count > 1 and random.random() < 0.75:
         trap_stage = random.randrange(count - 1)
         stages[trap_stage][0] = Gate("x", 3)
         stages[trap_stage + 1][0] = Gate("/", 3)
@@ -69,16 +76,13 @@ def highest_possible_route_result(start_speed, stages):
     return max(possible_route_results(start_speed, stages))
 
 
-def reset_game():
-    car = Car(random.randint(10, 30))
-    stages = make_stages()
+def reset_game(config):
+    car = Car(random.randint(*config.starting_speed))
+    stages = make_stages(config)
     car.set_lane_count(len(stages[0]))
     passed = [False] * len(stages)
     reachable_results = sorted(possible_route_results(car.speed, stages))
-    # Pick an attainable result, not a value between two possible routes.
-    # The lower-middle result keeps the ramp challenging without requiring
-    # the player to find the single mathematically best route.
-    target_index = max(0, (len(reachable_results) - 1) * 2 // 5)
+    target_index = int((len(reachable_results) - 1) * config.target_percentile)
     ramp_requirement = reachable_results[target_index]
     ramp = Ramp(ramp_requirement)
     ramp_world_y = (len(stages) + 1) * STAGE_GAP
@@ -110,6 +114,33 @@ def draw_menu(screen, title_font, font, start_btn, exit_btn):
 
     exit_text = font.render("Exit", True, (255, 255, 255))
     screen.blit(exit_text, exit_text.get_rect(center=exit_btn.center))
+
+
+def draw_level_select(screen, title_font, font, levels, unlocked_level):
+    screen.fill((20, 20, 30))
+    title = title_font.render("Choose Level", True, (255, 255, 255))
+    screen.blit(title, title.get_rect(center=(WIDTH // 2, 70)))
+
+    for index, config in enumerate(levels):
+        y = 125 + index * 105
+        unlocked = index <= unlocked_level
+        button = pygame.Rect(35, y, WIDTH - 70, 82)
+        color = (55, 135, 80) if unlocked else (65, 65, 75)
+        pygame.draw.rect(screen, color, button, border_radius=8)
+        label = f"{index + 1}. {config.name}"
+        if not unlocked:
+            label += "  (Locked)"
+        name = font.render(label, True, (255, 255, 255))
+        screen.blit(name, (button.x + 16, button.y + 10))
+        description = pygame.font.SysFont(None, 22).render(
+            config.description, True, (220, 220, 220)
+        )
+        screen.blit(description, (button.x + 16, button.y + 47))
+
+    hint = pygame.font.SysFont(None, 24).render(
+        "Click a level or press 1-5. Escape: back", True, (220, 220, 220)
+    )
+    screen.blit(hint, hint.get_rect(center=(WIDTH // 2, HEIGHT - 25)))
 
 
 def draw_road(screen, distance):
@@ -283,9 +314,17 @@ def main():
     start_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 - 20, 240, 60)
     exit_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 + 70, 240, 60)
     continue_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 + 60, 240, 60)
+    leave_level_btn = pygame.Rect(WIDTH - 105, 42, 95, 36)
+    level_buttons = [
+        pygame.Rect(35, 125 + index * 105, WIDTH - 70, 82)
+        for index in range(len(LEVELS))
+    ]
 
     current_state = "menu"
-    car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks = reset_game()
+    selected_level = 0
+    unlocked_level = 0
+    config = LEVELS[selected_level]
+    car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks = reset_game(config)
     prepare_time = 2.0
 
     running = True
@@ -301,19 +340,46 @@ def main():
                 if current_state == "menu":
                     if event.type == pygame.MOUSEBUTTONDOWN:
                         if start_btn.collidepoint(event.pos):
-                            current_state = "game"
-                            car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks = reset_game()
+                            current_state = "level_select"
                         elif exit_btn.collidepoint(event.pos):
                             running = False
                     continue
 
+                if current_state == "level_select":
+                    if event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_ESCAPE:
+                            current_state = "menu"
+                        elif pygame.K_1 <= event.key <= pygame.K_5:
+                            level_index = event.key - pygame.K_1
+                            if level_index <= unlocked_level:
+                                selected_level = level_index
+                                config = LEVELS[selected_level]
+                                car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks = reset_game(config)
+                                current_state = "game"
+                    elif event.type == pygame.MOUSEBUTTONDOWN:
+                        for level_index, button in enumerate(level_buttons):
+                            if button.collidepoint(event.pos) and level_index <= unlocked_level:
+                                selected_level = level_index
+                                config = LEVELS[selected_level]
+                                car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks = reset_game(config)
+                                current_state = "game"
+                                break
+                    continue
+
                 if current_state == "game":
+                    if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                        current_state = "level_select"
+                        continue
+                    if event.type == pygame.MOUSEBUTTONDOWN and leave_level_btn.collidepoint(event.pos):
+                        current_state = "level_select"
+                        continue
+
                     if result is not None:
                         if event.type == pygame.MOUSEBUTTONDOWN and continue_btn.collidepoint(event.pos):
-                            current_state = "menu"
+                            current_state = "level_select"
                             continue
                         if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
-                            car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks = reset_game()
+                            car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks = reset_game(config)
                             continue
 
                     if event.type == pygame.KEYDOWN:
@@ -340,17 +406,22 @@ def main():
                 passed_sec = (pygame.time.get_ticks() - start_ticks) / 1000.0
 
                 if result is None and passed_sec >= prepare_time:
+                    if config.time_limit is not None and passed_sec >= config.time_limit:
+                        result = "LOSE"
                     distance += SCROLL_SPEED * delta_seconds * 60
 
-                    for index, pair in enumerate(stages):
-                        if not passed[index] and distance >= (index + 1) * STAGE_GAP:
-                            car.pass_gate(pair[min(car.lane, len(pair) - 1)])
-                            passed[index] = True
-                            if index + 1 < len(stages):
-                                car.set_lane_count(len(stages[index + 1]))
+                    if result is None:
+                        for index, pair in enumerate(stages):
+                            if not passed[index] and distance >= (index + 1) * STAGE_GAP:
+                                car.pass_gate(pair[min(car.lane, len(pair) - 1)])
+                                passed[index] = True
+                                if index + 1 < len(stages):
+                                    car.set_lane_count(len(stages[index + 1]))
 
-                    if distance >= ramp_world_y:
+                    if result is None and distance >= ramp_world_y:
                         result = "WIN" if ramp.can_pass(car.speed) else "LOSE"
+                        if result == "WIN" and selected_level == unlocked_level:
+                            unlocked_level = min(unlocked_level + 1, len(LEVELS) - 1)
 
                 draw_road(screen, distance)
 
@@ -365,6 +436,13 @@ def main():
 
                 speed_text = font.render(f"Speed: {car.speed}", True, (255, 255, 255))
                 screen.blit(speed_text, (10, 10))
+                if config.time_limit is not None and result is None:
+                    timer_text = font.render(
+                        f"Time: {max(0, config.time_limit - passed_sec):.1f}",
+                        True,
+                        (255, 235, 120),
+                    )
+                    screen.blit(timer_text, (10, 48))
                 controls_font = pygame.font.SysFont(None, 24)
                 controls_text = controls_font.render(
                     "A/Left   S/Down   D/Right", True, (225, 225, 225)
@@ -400,8 +478,16 @@ def main():
                     screen.blit(continue_text, continue_text.get_rect(center=continue_btn.center))
                     restart_text = font.render("Or Press 'R'", True, (220, 220, 220))
                     screen.blit(restart_text, restart_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 150)))
+                level_text = font.render(config.name, True, (255, 255, 255))
+                screen.blit(level_text, level_text.get_rect(center=(WIDTH // 2, 20)))
+                pygame.draw.rect(screen, (180, 70, 70), leave_level_btn, border_radius=6)
+                leave_text = pygame.font.SysFont(None, 24).render("Exit", True, (255, 255, 255))
+                screen.blit(leave_text, leave_text.get_rect(center=leave_level_btn.center))
             else:
-                draw_menu(screen, title_font, font, start_btn, exit_btn)
+                if current_state == "menu":
+                    draw_menu(screen, title_font, font, start_btn, exit_btn)
+                else:
+                    draw_level_select(screen, title_font, font, LEVELS, unlocked_level)
 
             pygame.display.flip()
     finally:

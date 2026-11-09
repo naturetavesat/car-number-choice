@@ -12,8 +12,9 @@ A gate-choosing racing game. Pick the right gate in each sub-stage to manage you
 
 ## Game Rules
 
-- Start with a random speed. Speed acts as your health points.
-- Each run has 5 to 10 sub-stages. A stage has 2 or occasionally 3 gates.
+- Start with a level-specific speed. Speed acts as your health points.
+- Choose from five levels, each with increasingly difficult routes.
+- Each level has its own number of sub-stages and gates.
 - Choose your lane before each gate. The road moves at a consistent speed.
 - Gates change speed: `+`, `-`, `x`, `/` (division rounds down).
 - Some stages contain deceptive multiplier/division combinations.
@@ -24,6 +25,8 @@ A gate-choosing racing game. Pick the right gate in each sub-stage to manage you
 - Main menu (Play, Settings, Player) and car selection
 - Mouse or keyboard controls
 - Gates and ramp
+- Level selection with Tutorial, Easy, Normal, Hard, and Expert difficulties
+- Higher levels unlock after winning the previous level
 - _Additional: tutorial, difficulty, sound, Mystery Door, shop, Thai/English_
 
 ## How to Run
