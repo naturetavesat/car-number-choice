@@ -23,6 +23,9 @@ def clamp(value, lower, upper):
     return max(lower, min(value, upper))
 
 
+# ---------------------------------------------------------------------------
+# Game logic (level-config driven)
+# ---------------------------------------------------------------------------
 def random_gate(allowed_operations):
     op = random.choice(allowed_operations)
     if op == "+":
@@ -100,17 +103,74 @@ def active_lane_count(stages, passed):
     return len(stages[next_stage])
 
 
-def draw_menu(screen, title_font, font, start_btn, exit_btn):
+# ---------------------------------------------------------------------------
+# Car images
+# ---------------------------------------------------------------------------
+def create_dummy_car():
+    # สร้าง Surface เปล่าขนาดเท่ากับรถจริง (กว้าง 108, สูง 165) แบบรองรับพื้นหลังโปร่งใส
+    surface = pygame.Surface((108, 165), pygame.SRCALPHA)
+
+    # พิกัดกึ่งกลางของ Surface
+    cx, cy = 54, 82
+
+    # วาดเงา, ตัวรถ, กระจกหน้า, กระโปรงหน้า และล้อ
+    shadow = pygame.Rect(cx - 42, cy + 22, 84, 13)
+    body = pygame.Rect(cx - 31, cy - 29, 62, 58)
+
+    pygame.draw.ellipse(surface, (25, 25, 25), shadow)
+    pygame.draw.rect(surface, (45, 120, 225), body, border_radius=12)
+    pygame.draw.polygon(surface, (105, 185, 255), [
+        (cx - 21, cy - 7), (cx - 14, cy - 23),
+        (cx + 14, cy - 23), (cx + 21, cy - 7),
+    ])
+    pygame.draw.rect(surface, (230, 230, 240), (cx - 21, cy + 5, 42, 12), border_radius=4)
+    pygame.draw.circle(surface, (30, 30, 30), (cx - 23, cy + 23), 7)
+    pygame.draw.circle(surface, (30, 30, 30), (cx + 23, cy + 23), 7)
+
+    return surface
+
+
+def load_car_imgs(pic_dir="Pic"):
+    car_imgs = []
+    index = 1
+
+    # โหลดภาพ car1.png, car2.png, car3.png ... ไปเรื่อย ๆ
+    while True:
+        filepath = f"{pic_dir}/car{index}.png"
+        try:
+            img = pygame.image.load(filepath).convert_alpha()
+            img = pygame.transform.scale(img, (108, 165))
+            car_imgs.append(img)
+            index += 1
+        except (pygame.error, FileNotFoundError, OSError):
+            break
+
+    if not car_imgs:
+        car_imgs.append(create_dummy_car())
+
+    return car_imgs
+
+
+# ---------------------------------------------------------------------------
+# Menus
+# ---------------------------------------------------------------------------
+def draw_menu(screen, title_font, font, start_btn, select_car_btn, exit_btn):
     screen.fill((20, 20, 30))
 
+    # ชื่อเกม
     title = title_font.render("The Car Game", True, (255, 255, 255))
     screen.blit(title, title.get_rect(center=(WIDTH // 2, HEIGHT // 3)))
 
+    # ปุ่ม Start, Select Car และ Exit
     pygame.draw.rect(screen, (60, 170, 90), start_btn, border_radius=8)
+    pygame.draw.rect(screen, (70, 130, 180), select_car_btn, border_radius=8)
     pygame.draw.rect(screen, (180, 70, 70), exit_btn, border_radius=8)
 
     start_text = font.render("Start", True, (255, 255, 255))
     screen.blit(start_text, start_text.get_rect(center=start_btn.center))
+
+    select_car_text = font.render("Select Car", True, (255, 255, 255))
+    screen.blit(select_car_text, select_car_text.get_rect(center=select_car_btn.center))
 
     exit_text = font.render("Exit", True, (255, 255, 255))
     screen.blit(exit_text, exit_text.get_rect(center=exit_btn.center))
@@ -138,11 +198,46 @@ def draw_level_select(screen, title_font, font, levels, unlocked_level):
         screen.blit(description, (button.x + 16, button.y + 47))
 
     hint = pygame.font.SysFont(None, 24).render(
-        "Click a level or press 1-5. Escape: back", True, (220, 220, 220)
+        f"Click a level or press 1-{len(levels)}. Escape: back", True, (220, 220, 220)
     )
     screen.blit(hint, hint.get_rect(center=(WIDTH // 2, HEIGHT - 25)))
 
 
+def draw_selected_car_menu(screen, title_font, font, car_imgs, selected_car_idx,
+                           prev_car_btn, next_car_btn, back_btn):
+    screen.fill((20, 20, 20))
+
+    # หัวข้อหน้าเลือกรถ
+    title = title_font.render("Select Your Car", True, (255, 255, 255))
+    screen.blit(title, title.get_rect(center=(WIDTH // 2, HEIGHT // 6)))
+
+    # แสดงพรีวิวภาพรถคันที่เลือกอยู่ตรงกลาง
+    current_car_img = car_imgs[selected_car_idx]
+    car_preview_rect = current_car_img.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 20))
+    screen.blit(current_car_img, car_preview_rect)
+
+    # วาดปุ่มกดเปลี่ยนรถซ้าย (<) และขวา (>)
+    pygame.draw.rect(screen, (100, 100, 120), prev_car_btn, border_radius=8)
+    pygame.draw.rect(screen, (100, 100, 120), next_car_btn, border_radius=8)
+
+    prev_text = font.render("<", True, (255, 255, 255))
+    next_text = font.render(">", True, (255, 255, 255))
+    screen.blit(prev_text, prev_text.get_rect(center=prev_car_btn.center))
+    screen.blit(next_text, next_text.get_rect(center=next_car_btn.center))
+
+    # ป้ายบอกลำดับรถ (เช่น Car 1 / 3)
+    car_name_text = font.render(f"Car {selected_car_idx + 1} / {len(car_imgs)}", True, (255, 215, 0))
+    screen.blit(car_name_text, car_name_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 90)))
+
+    # ปุ่ม Back เพื่อตกลงเลือกรถแล้วกลับหน้า Menu
+    pygame.draw.rect(screen, (60, 170, 90), back_btn, border_radius=10)
+    back_text = font.render("Confirm & Back", True, (255, 255, 255))
+    screen.blit(back_text, back_text.get_rect(center=back_btn.center))
+
+
+# ---------------------------------------------------------------------------
+# Road / gate / ramp / car drawing
+# ---------------------------------------------------------------------------
 def draw_road(screen, distance):
     """Draw a receding road with perspective lane markings and roadside stripes."""
     road_points = [
@@ -262,35 +357,16 @@ def draw_ramp(screen, ramp, y, font):
     screen.blit(label, label.get_rect(center=(WIDTH // 2, int(y))))
 
 
-def draw_car(screen, car, car_img, lane_count):
-    lane_position = min(car.lane_position, lane_count - 1)
-    lane_x = lane_center_x(
-        lane_position,
-        lane_count,
-        perspective_for_y(CAR_Y),
-    )
-    car_y = int(HEIGHT * 0.82)
-
-    if car_img is not None:
-        # Preserve the supplied sprite while scaling it to sit naturally on the road.
-        image = pygame.transform.scale(car_img, (84, 128))
-        screen.blit(image, image.get_rect(midbottom=(lane_x, car_y + 35)))
-        return
-
-    # Fallback car sprite if the image asset is unavailable.
-    shadow = pygame.Rect(lane_x - 42, car_y + 22, 84, 13)
-    body = pygame.Rect(lane_x - 31, car_y - 29, 62, 58)
-    pygame.draw.ellipse(screen, (25, 25, 25), shadow)
-    pygame.draw.rect(screen, (45, 120, 225), body, border_radius=12)
-    pygame.draw.polygon(screen, (105, 185, 255), [
-        (lane_x - 21, car_y - 7), (lane_x - 14, car_y - 23),
-        (lane_x + 14, car_y - 23), (lane_x + 21, car_y - 7),
-    ])
-    pygame.draw.rect(screen, (230, 230, 240), (lane_x - 21, car_y + 5, 42, 12), border_radius=4)
-    pygame.draw.circle(screen, (30, 30, 30), (lane_x - 23, car_y + 23), 7)
-    pygame.draw.circle(screen, (30, 30, 30), (lane_x + 23, car_y + 23), 7)
+def draw_car(screen, car_img, lane_position, lane_count, car_y):
+    lane_position = min(lane_position, lane_count - 1)
+    depth = perspective_for_y(car_y)
+    car_x = lane_center_x(lane_position, lane_count, depth)
+    screen.blit(car_img, car_img.get_rect(center=(car_x, car_y)))
 
 
+# ---------------------------------------------------------------------------
+# Main loop
+# ---------------------------------------------------------------------------
 def main():
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -306,15 +382,30 @@ def main():
         except (pygame.error, FileNotFoundError):
             return None
 
-    car_img = load_image("Pic/car1.png")
+    # โหลดไฟล์ภาพรถทั้งหมด
+    car_imgs = load_car_imgs("Pic")
+    selected_car_idx = 0
+
+    # โหลดสัญญาณไฟ
     red_light = load_image("Pic/RedLight.png")
     yellow_light = load_image("Pic/YellowLight.png")
     green_light = load_image("Pic/GreenLight.png")
 
+    # ปุ่มเลือกรถ
+    prev_car_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 - 10, 45, 45)
+    next_car_btn = pygame.Rect(WIDTH // 2 + 75, HEIGHT // 2 - 10, 45, 45)
+    back_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT - 100, 240, 50)
+
+    # ปุ่มหน้า Menu
     start_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 - 20, 240, 60)
-    exit_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 + 70, 240, 60)
+    select_car_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 + 60, 240, 60)
+    exit_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 + 140, 240, 60)
+
+    # ปุ่มในเกม
     continue_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 + 60, 240, 60)
     leave_level_btn = pygame.Rect(WIDTH - 105, 42, 95, 36)
+
+    # ปุ่มเลือกด่าน
     level_buttons = [
         pygame.Rect(35, 125 + index * 105, WIDTH - 70, 82)
         for index in range(len(LEVELS))
@@ -327,6 +418,14 @@ def main():
     car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks = reset_game(config)
     prepare_time = 2.0
 
+    def start_level(level_index):
+        nonlocal selected_level, config, car, stages, passed, ramp
+        nonlocal ramp_world_y, distance, result, start_ticks, current_state
+        selected_level = level_index
+        config = LEVELS[selected_level]
+        car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks = reset_game(config)
+        current_state = "game"
+
     running = True
     try:
         while running:
@@ -337,35 +436,48 @@ def main():
                     running = False
                     continue
 
+                # Event หน้า Menu
                 if current_state == "menu":
                     if event.type == pygame.MOUSEBUTTONDOWN:
                         if start_btn.collidepoint(event.pos):
                             current_state = "level_select"
+                        elif select_car_btn.collidepoint(event.pos):
+                            current_state = "select_car"
                         elif exit_btn.collidepoint(event.pos):
                             running = False
                     continue
 
+                # Event หน้าเลือกรถ
+                if current_state == "select_car":
+                    if event.type == pygame.MOUSEBUTTONDOWN:
+                        if prev_car_btn.collidepoint(event.pos):
+                            selected_car_idx = (selected_car_idx - 1) % len(car_imgs)
+                        elif next_car_btn.collidepoint(event.pos):
+                            selected_car_idx = (selected_car_idx + 1) % len(car_imgs)
+                        elif back_btn.collidepoint(event.pos):
+                            current_state = "menu"
+                    elif event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_ESCAPE:
+                            current_state = "menu"
+                    continue
+
+                # Event หน้าเลือกด่าน
                 if current_state == "level_select":
                     if event.type == pygame.KEYDOWN:
                         if event.key == pygame.K_ESCAPE:
                             current_state = "menu"
-                        elif pygame.K_1 <= event.key <= pygame.K_5:
+                        elif pygame.K_1 <= event.key <= pygame.K_9:
                             level_index = event.key - pygame.K_1
-                            if level_index <= unlocked_level:
-                                selected_level = level_index
-                                config = LEVELS[selected_level]
-                                car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks = reset_game(config)
-                                current_state = "game"
+                            if level_index < len(LEVELS) and level_index <= unlocked_level:
+                                start_level(level_index)
                     elif event.type == pygame.MOUSEBUTTONDOWN:
                         for level_index, button in enumerate(level_buttons):
                             if button.collidepoint(event.pos) and level_index <= unlocked_level:
-                                selected_level = level_index
-                                config = LEVELS[selected_level]
-                                car, stages, passed, ramp, ramp_world_y, distance, result, start_ticks = reset_game(config)
-                                current_state = "game"
+                                start_level(level_index)
                                 break
                     continue
 
+                # Event ระหว่างเล่นเกม
                 if current_state == "game":
                     if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                         current_state = "level_select"
@@ -384,12 +496,14 @@ def main():
 
                     if event.type == pygame.KEYDOWN:
                         lane_count = active_lane_count(stages, passed)
+                        current = min(car.lane, lane_count - 1)
+
                         if event.key in (pygame.K_a, pygame.K_LEFT):
-                            car.move_to_lane(0, lane_count)
+                            car.move_to_lane(max(0, current - 1), lane_count)
                         elif event.key in (pygame.K_s, pygame.K_DOWN):
                             car.move_to_lane(1, lane_count)
                         elif event.key in (pygame.K_d, pygame.K_RIGHT):
-                            car.move_to_lane(lane_count - 1, lane_count)
+                            car.move_to_lane(min(lane_count - 1, current + 1), lane_count)
                     elif event.type == pygame.MOUSEMOTION:
                         lane_count = active_lane_count(stages, passed)
                         car_depth = perspective_for_y(HEIGHT * 0.82)
@@ -406,6 +520,7 @@ def main():
                 passed_sec = (pygame.time.get_ticks() - start_ticks) / 1000.0
 
                 if result is None and passed_sec >= prepare_time:
+                    # หมดเวลาตามที่ด่านกำหนด
                     if config.time_limit is not None and passed_sec >= config.time_limit:
                         result = "LOSE"
                     distance += SCROLL_SPEED * delta_seconds * 60
@@ -420,6 +535,7 @@ def main():
 
                     if result is None and distance >= ramp_world_y:
                         result = "WIN" if ramp.can_pass(car.speed) else "LOSE"
+                        # ชนะด่านล่าสุดที่ปลดล็อก -> ปลดล็อกด่านถัดไป
                         if result == "WIN" and selected_level == unlocked_level:
                             unlocked_level = min(unlocked_level + 1, len(LEVELS) - 1)
 
@@ -432,7 +548,9 @@ def main():
 
                 ramp_y = CAR_Y - (ramp_world_y - distance)
                 draw_ramp(screen, ramp, ramp_y, font)
-                draw_car(screen, car, car_img, car.lane_count)
+
+                active_car_img = car_imgs[selected_car_idx]
+                draw_car(screen, active_car_img, car.lane_position, car.lane_count, CAR_Y)
 
                 speed_text = font.render(f"Speed: {car.speed}", True, (255, 255, 255))
                 screen.blit(speed_text, (10, 10))
@@ -478,16 +596,21 @@ def main():
                     screen.blit(continue_text, continue_text.get_rect(center=continue_btn.center))
                     restart_text = font.render("Or Press 'R'", True, (220, 220, 220))
                     screen.blit(restart_text, restart_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 150)))
+
+                # ชื่อด่าน + ปุ่มออกจากด่าน
                 level_text = font.render(config.name, True, (255, 255, 255))
                 screen.blit(level_text, level_text.get_rect(center=(WIDTH // 2, 20)))
                 pygame.draw.rect(screen, (180, 70, 70), leave_level_btn, border_radius=6)
                 leave_text = pygame.font.SysFont(None, 24).render("Exit", True, (255, 255, 255))
                 screen.blit(leave_text, leave_text.get_rect(center=leave_level_btn.center))
+
+            elif current_state == "select_car":
+                draw_selected_car_menu(screen, title_font, font, car_imgs, selected_car_idx,
+                                       prev_car_btn, next_car_btn, back_btn)
+            elif current_state == "level_select":
+                draw_level_select(screen, title_font, font, LEVELS, unlocked_level)
             else:
-                if current_state == "menu":
-                    draw_menu(screen, title_font, font, start_btn, exit_btn)
-                else:
-                    draw_level_select(screen, title_font, font, LEVELS, unlocked_level)
+                draw_menu(screen, title_font, font, start_btn, select_car_btn, exit_btn)
 
             pygame.display.flip()
     finally:
