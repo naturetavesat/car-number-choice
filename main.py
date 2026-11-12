@@ -13,6 +13,7 @@ SCROLL_SPEED = 4
 HORIZON_Y = int(HEIGHT * 0.18)
 ROAD_TOP_HALF = 48
 ROAD_BOTTOM_HALF = WIDTH * 0.46
+ROAD_TILE_SIZE = (WIDTH, WIDTH)
 
 
 def lerp(start, end, amount):
@@ -238,66 +239,28 @@ def draw_selected_car_menu(screen, title_font, font, car_imgs, selected_car_idx,
 # ---------------------------------------------------------------------------
 # Road / gate / ramp / car drawing
 # ---------------------------------------------------------------------------
-def draw_road(screen, distance):
-    """Draw a receding road with perspective lane markings and roadside stripes."""
-    road_points = [
-        (WIDTH // 2 - ROAD_TOP_HALF, HORIZON_Y),
-        (WIDTH // 2 + ROAD_TOP_HALF, HORIZON_Y),
-        (WIDTH // 2 + ROAD_BOTTOM_HALF, HEIGHT),
-        (WIDTH // 2 - ROAD_BOTTOM_HALF, HEIGHT),
-    ]
-
+def draw_road(screen, distance, road_tile_sequence):
+    """Draw randomly selected road tiles projected onto the receding road."""
     screen.fill((100, 160, 95))
-    pygame.draw.rect(screen, (110, 175, 105), (0, HORIZON_Y, WIDTH, HEIGHT - HORIZON_Y))
-    pygame.draw.polygon(screen, (45, 46, 52), road_points)
-    pygame.draw.polygon(screen, (210, 210, 210), road_points, 2)
 
-    # Short dashed center line segments shrink toward the horizon and scroll with the road.
-    stripe_cycle = 100
-    scroll = (distance * 3) % stripe_cycle
-    for index in range(-1, 10):
-        world_y = index * stripe_cycle + scroll
-        t = world_y / (HEIGHT - HORIZON_Y)
-        if not 0 <= t <= 1:
-            continue
-        y = int(lerp(HORIZON_Y, HEIGHT, t))
-        half_width = road_half_width(t)
-        dash_height = max(2, int(lerp(3, 24, t)))
-        dash_width = max(1, int(lerp(1, 5, t)))
-        pygame.draw.rect(
-            screen,
-            (230, 230, 220),
-            (WIDTH // 2 - dash_width // 2, y, dash_width, dash_height),
-        )
+    tile_height = ROAD_TILE_SIZE[1]
+    world_tile_offset = int(distance // tile_height)
+    scroll = int(distance) % tile_height
+    for index in range(-1, 3):
+        tile_index = (index - world_tile_offset) % len(road_tile_sequence)
+        tile = road_tile_sequence[tile_index]
+        tile_y = HORIZON_Y + index * tile_height + scroll
+        first_row = max(0, HORIZON_Y - tile_y)
+        last_row = min(tile_height, HEIGHT - tile_y)
 
-        # Perspective cross-road markings add depth without adding gameplay obstacles.
-        if index % 2 == 0:
-            pygame.draw.line(
-                screen,
-                (75, 76, 82),
-                (WIDTH // 2 - half_width, y + dash_height),
-                (WIDTH // 2 + half_width, y + dash_height),
-                max(1, int(1 + t * 2)),
-            )
-
-    # Scrolling red/white edge markers reinforce the sense of forward motion.
-    for side in (-1, 1):
-        for index in range(-1, 9):
-            world_y = index * 90 + (distance * 3) % 90
-            t = world_y / (HEIGHT - HORIZON_Y)
-            if not 0 <= t <= 1:
-                continue
-            y = int(lerp(HORIZON_Y, HEIGHT, t))
-            half_width = road_half_width(t)
-            marker_width = max(2, int(lerp(2, 12, t)))
-            marker_height = max(2, int(lerp(3, 30, t)))
-            x = int(WIDTH // 2 + side * (half_width + marker_width))
-            color = (225, 225, 220) if index % 2 else (190, 65, 55)
-            pygame.draw.rect(
-                screen,
-                color,
-                (x - marker_width // 2, y, marker_width, marker_height),
-            )
+        for source_y in range(first_row, last_row, 4):
+            y = tile_y + source_y
+            depth = perspective_for_y(y)
+            half_width = int(road_half_width(depth))
+            row_height = min(4, last_row - source_y)
+            row = tile.subsurface((0, source_y, tile.get_width(), row_height))
+            row = pygame.transform.scale(row, (half_width * 2, row_height))
+            screen.blit(row, (WIDTH // 2 - half_width, y))
 
 
 def perspective_for_y(y):
@@ -390,6 +353,18 @@ def main():
     red_light = load_image("Pic/RedLight.png")
     yellow_light = load_image("Pic/YellowLight.png")
     green_light = load_image("Pic/GreenLight.png")
+
+    road_tiles = []
+    for path in (
+        "Pic/Road_01_Tile_03/Road_01_Tile_03.png",
+        "Pic/Road_01_Tile_04/Road_01_Tile_04.png",
+    ):
+        tile = load_image(path)
+        if tile is None:
+            raise RuntimeError(f"Unable to load road tile: {path}")
+        tile = pygame.transform.rotate(tile, 90)
+        road_tiles.append(pygame.transform.smoothscale(tile, ROAD_TILE_SIZE))
+    road_tile_sequence = [random.choice(road_tiles) for _ in range(32)]
 
     # ปุ่มเลือกรถ
     prev_car_btn = pygame.Rect(WIDTH // 2 - 120, HEIGHT // 2 - 10, 45, 45)
@@ -539,7 +514,7 @@ def main():
                         if result == "WIN" and selected_level == unlocked_level:
                             unlocked_level = min(unlocked_level + 1, len(LEVELS) - 1)
 
-                draw_road(screen, distance)
+                draw_road(screen, distance, road_tile_sequence)
 
                 for index, pair in enumerate(stages):
                     gate_y = CAR_Y - ((index + 1) * STAGE_GAP - distance)
