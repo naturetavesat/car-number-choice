@@ -406,19 +406,16 @@ def main():
                 passed_sec = (pygame.time.get_ticks() - start_ticks) / 1000.0
 
                 if result is None and passed_sec >= prepare_time:
-                    if config.time_limit is not None and passed_sec >= config.time_limit:
-                        result = "LOSE"
                     distance += SCROLL_SPEED * delta_seconds * 60
 
-                    if result is None:
-                        for index, pair in enumerate(stages):
-                            if not passed[index] and distance >= (index + 1) * STAGE_GAP:
-                                car.pass_gate(pair[min(car.lane, len(pair) - 1)])
-                                passed[index] = True
-                                if index + 1 < len(stages):
-                                    car.set_lane_count(len(stages[index + 1]))
+                    for index, pair in enumerate(stages):
+                        if not passed[index] and distance >= (index + 1) * STAGE_GAP:
+                            car.pass_gate(pair[min(car.lane, len(pair) - 1)])
+                            passed[index] = True
+                            if index + 1 < len(stages):
+                                car.set_lane_count(len(stages[index + 1]))
 
-                    if result is None and distance >= ramp_world_y:
+                    if distance >= ramp_world_y:
                         result = "WIN" if ramp.can_pass(car.speed) else "LOSE"
                         if result == "WIN" and selected_level == unlocked_level:
                             unlocked_level = min(unlocked_level + 1, len(LEVELS) - 1)
@@ -436,13 +433,6 @@ def main():
 
                 speed_text = font.render(f"Speed: {car.speed}", True, (255, 255, 255))
                 screen.blit(speed_text, (10, 10))
-                if config.time_limit is not None and result is None:
-                    timer_text = font.render(
-                        f"Time: {max(0, config.time_limit - passed_sec):.1f}",
-                        True,
-                        (255, 235, 120),
-                    )
-                    screen.blit(timer_text, (10, 48))
                 controls_font = pygame.font.SysFont(None, 24)
                 controls_text = controls_font.render(
                     "A/Left   S/Down   D/Right", True, (225, 225, 225)

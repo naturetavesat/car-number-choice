@@ -14,6 +14,8 @@ HORIZON_Y = int(HEIGHT * 0.18)
 ROAD_TOP_HALF = 48
 ROAD_BOTTOM_HALF = WIDTH * 0.46
 ROAD_TILE_SIZE = (WIDTH, WIDTH)
+GRASS_TOP_HALF = ROAD_TOP_HALF + 120
+GRASS_BOTTOM_HALF = ROAD_BOTTOM_HALF + 360
 
 
 def lerp(start, end, amount):
@@ -239,9 +241,9 @@ def draw_selected_car_menu(screen, title_font, font, car_imgs, selected_car_idx,
 # ---------------------------------------------------------------------------
 # Road / gate / ramp / car drawing
 # ---------------------------------------------------------------------------
-def draw_road(screen, distance, road_tile_sequence):
-    """Draw randomly selected road tiles projected onto the receding road."""
-    screen.fill((100, 160, 95))
+def draw_road(screen, distance, road_tile_sequence, grass_tile=None):
+    """Draw the road and grass tiles projected onto the receding ground."""
+    screen.fill((45, 105, 55))
 
     tile_height = ROAD_TILE_SIZE[1]
     world_tile_offset = int(distance // tile_height)
@@ -256,8 +258,21 @@ def draw_road(screen, distance, road_tile_sequence):
         for source_y in range(first_row, last_row, 4):
             y = tile_y + source_y
             depth = perspective_for_y(y)
-            half_width = int(road_half_width(depth))
             row_height = min(4, last_row - source_y)
+
+            if grass_tile is not None:
+                grass_half_width = int(
+                    lerp(GRASS_TOP_HALF, GRASS_BOTTOM_HALF, depth)
+                )
+                grass_row = grass_tile.subsurface(
+                    (0, source_y, grass_tile.get_width(), row_height)
+                )
+                grass_row = pygame.transform.scale(
+                    grass_row, (grass_half_width * 2, row_height)
+                )
+                screen.blit(grass_row, (WIDTH // 2 - grass_half_width, y))
+
+            half_width = int(road_half_width(depth))
             row = tile.subsurface((0, source_y, tile.get_width(), row_height))
             row = pygame.transform.scale(row, (half_width * 2, row_height))
             screen.blit(row, (WIDTH // 2 - half_width, y))
@@ -353,6 +368,9 @@ def main():
     red_light = load_image("Pic/RedLight.png")
     yellow_light = load_image("Pic/YellowLight.png")
     green_light = load_image("Pic/GreenLight.png")
+    grass_tile = load_image("Pic/Grass_Tile.png")
+    if grass_tile is not None:
+        grass_tile = pygame.transform.smoothscale(grass_tile, ROAD_TILE_SIZE)
 
     road_tiles = []
     for path in (
@@ -495,26 +513,22 @@ def main():
                 passed_sec = (pygame.time.get_ticks() - start_ticks) / 1000.0
 
                 if result is None and passed_sec >= prepare_time:
-                    # หมดเวลาตามที่ด่านกำหนด
-                    if config.time_limit is not None and passed_sec >= config.time_limit:
-                        result = "LOSE"
                     distance += SCROLL_SPEED * delta_seconds * 60
 
-                    if result is None:
-                        for index, pair in enumerate(stages):
-                            if not passed[index] and distance >= (index + 1) * STAGE_GAP:
-                                car.pass_gate(pair[min(car.lane, len(pair) - 1)])
-                                passed[index] = True
-                                if index + 1 < len(stages):
-                                    car.set_lane_count(len(stages[index + 1]))
+                    for index, pair in enumerate(stages):
+                        if not passed[index] and distance >= (index + 1) * STAGE_GAP:
+                            car.pass_gate(pair[min(car.lane, len(pair) - 1)])
+                            passed[index] = True
+                            if index + 1 < len(stages):
+                                car.set_lane_count(len(stages[index + 1]))
 
-                    if result is None and distance >= ramp_world_y:
+                    if distance >= ramp_world_y:
                         result = "WIN" if ramp.can_pass(car.speed) else "LOSE"
                         # ชนะด่านล่าสุดที่ปลดล็อก -> ปลดล็อกด่านถัดไป
                         if result == "WIN" and selected_level == unlocked_level:
                             unlocked_level = min(unlocked_level + 1, len(LEVELS) - 1)
 
-                draw_road(screen, distance, road_tile_sequence)
+                draw_road(screen, distance, road_tile_sequence, grass_tile)
 
                 for index, pair in enumerate(stages):
                     gate_y = CAR_Y - ((index + 1) * STAGE_GAP - distance)
@@ -529,13 +543,6 @@ def main():
 
                 speed_text = font.render(f"Speed: {car.speed}", True, (255, 255, 255))
                 screen.blit(speed_text, (10, 10))
-                if config.time_limit is not None and result is None:
-                    timer_text = font.render(
-                        f"Time: {max(0, config.time_limit - passed_sec):.1f}",
-                        True,
-                        (255, 235, 120),
-                    )
-                    screen.blit(timer_text, (10, 48))
                 controls_font = pygame.font.SysFont(None, 24)
                 controls_text = controls_font.render(
                     "A/Left   S/Down   D/Right", True, (225, 225, 225)

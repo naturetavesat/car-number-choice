@@ -15,7 +15,6 @@ class LevelConfig:
     include_traps: bool
     target_percentile: float
     fixed_stages: tuple[tuple[Gate, ...], ...] = ()
-    time_limit: float | None = None
 
 
 LEVELS = (
@@ -45,6 +44,6 @@ LEVELS = (
     LevelConfig(
         "Expert",
         "The full challenge: long, unpredictable, and unforgiving.",
-        13, 3, 3, ("+", "-", "x", "/"), (10, 22), True, 0.30, (), 45.0,
+        13, 3, 3, ("+", "-", "x", "/"), (10, 22), True, 0.30,
     ),
 )
