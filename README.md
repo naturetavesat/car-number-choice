@@ -12,7 +12,7 @@ A gate-choosing racing game. Pick the right gate in each sub-stage to manage you
 
 ## Game Demo
 
-[Click Here](https://youtu.be/LsmZXgeLuQ8)
+[Click Here](https://youtube.com/shorts/oILGOWqioyQ?feature=share)
 
 ## Game Rules
 
