@@ -10,6 +10,10 @@ A gate-choosing racing game. Pick the right gate in each sub-stage to manage you
 | Panupong Soparat | 6934449423 | [@KhaowPadKaPrao](https://github.com/KhaowPadKaPrao) |
 | Nature Tavesat | 6934437923 | [@naturetavesat](https://github.com/naturetavesat) |
 
+## Game Demo
+
+[Click Here](https://youtu.be/LsmZXgeLuQ8)
+
 ## Game Rules
 
 - Start with a level-specific speed. Speed acts as your health points.
