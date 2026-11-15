@@ -243,7 +243,12 @@ def draw_selected_car_menu(screen, title_font, font, car_imgs, selected_car_idx,
 # ---------------------------------------------------------------------------
 def draw_road(screen, distance, road_tile_sequence, grass_tile=None):
     """Draw the road and grass tiles projected onto the receding ground."""
-    screen.fill((45, 105, 55))
+    screen.fill((135, 206, 235))
+    pygame.draw.rect(
+        screen,
+        (45, 105, 55),
+        (0, HORIZON_Y, WIDTH, HEIGHT - HORIZON_Y),
+    )
 
     tile_height = ROAD_TILE_SIZE[1]
     world_tile_offset = int(distance // tile_height)
