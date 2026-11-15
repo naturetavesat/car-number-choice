@@ -1,4 +1,7 @@
 import random
+import sys
+from pathlib import Path
+
 import pygame
 
 from car import Car
@@ -16,6 +19,11 @@ ROAD_BOTTOM_HALF = WIDTH * 0.46
 ROAD_TILE_SIZE = (WIDTH, WIDTH)
 GRASS_TOP_HALF = ROAD_TOP_HALF + 120
 GRASS_BOTTOM_HALF = ROAD_BOTTOM_HALF + 360
+RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+
+
+def resource_path(*parts):
+    return str(RESOURCE_DIR.joinpath(*parts))
 
 
 def lerp(start, end, amount):
@@ -139,7 +147,7 @@ def load_car_imgs(pic_dir="Pic"):
 
     # โหลดภาพ car1.png, car2.png, car3.png ... ไปเรื่อย ๆ
     while True:
-        filepath = f"{pic_dir}/car{index}.png"
+        filepath = resource_path(pic_dir, f"car{index}.png")
         try:
             img = pygame.image.load(filepath).convert_alpha()
             img = pygame.transform.scale(img, (108, 165))
@@ -370,17 +378,17 @@ def main():
     selected_car_idx = 0
 
     # โหลดสัญญาณไฟ
-    red_light = load_image("Pic/RedLight.png")
-    yellow_light = load_image("Pic/YellowLight.png")
-    green_light = load_image("Pic/GreenLight.png")
-    grass_tile = load_image("Pic/Grass_Tile.png")
+    red_light = load_image(resource_path("Pic", "RedLight.png"))
+    yellow_light = load_image(resource_path("Pic", "YellowLight.png"))
+    green_light = load_image(resource_path("Pic", "GreenLight.png"))
+    grass_tile = load_image(resource_path("Pic", "Grass_Tile.png"))
     if grass_tile is not None:
         grass_tile = pygame.transform.smoothscale(grass_tile, ROAD_TILE_SIZE)
 
     road_tiles = []
     for path in (
-        "Pic/Road_01_Tile_03/Road_01_Tile_03.png",
-        "Pic/Road_01_Tile_04/Road_01_Tile_04.png",
+        resource_path("Pic", "Road_01_Tile_03", "Road_01_Tile_03.png"),
+        resource_path("Pic", "Road_01_Tile_04", "Road_01_Tile_04.png"),
     ):
         tile = load_image(path)
         if tile is None:
